@@ -3,6 +3,21 @@
 
 This project is an **interactive desktop application** in Python for analyzing hero statistics from the game Overwatch. It leverages libraries such as Pandas, Matplotlib, and Scikit-learn for data processing, visualization, and statistical analysis.
 
+**Requirements**
+Application requires following packages:
+- pandas
+- numpy
+- matplotlib
+- scikit-learn
+- seaborn
+- mplcursors
+
+You can install all dependencies with this command:
+'''code
+pip install -r requirements.txt
+'''
+
+
 **Key Features**
 ### **Graphical User Interface (Tkinter):**
    - Loads data from a text file (.txt format)
