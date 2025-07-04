@@ -1,187 +1,190 @@
-import matplotlib
-import numpy as np
+import tkinter as tk
+from tkinter import messagebox
 import pandas as pd
+import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-import mplcursors
-import tkinter as tk
 import seaborn as sns
+import mplcursors
 
 matplotlib.use('TkAgg')
 pd.set_option('display.max_colwidth', None)
 
+# --- functions ---
 
-def wczytaj_plik():
-    plik_txt = pole.get()
-
+def load_file():
+    """loads the file specified by user"""
+    filename = file_entry.get()
     try:
-        df = pd.read_csv(plik_txt, sep='\t', encoding='cp1250')
+        df = pd.read_csv(filename, sep='\t', encoding='cp1250')
         df['Win rate'] = pd.to_numeric(df['Win rate'], errors='coerce')
         return df
     except Exception as e:
-        print(e)
+        messagebox.showerror("Loading error", f"Failed to load file:\n{e}")
+        return None
 
-
-def pokaz(wykres):
-    for widget in podglad.winfo_children():
+def show_plot(fig):
+    """displays the plot in the application window"""
+    for widget in preview_frame.winfo_children():
         widget.destroy()
-
-    canvas = FigureCanvasTkAgg(wykres, master=podglad)
+    canvas = FigureCanvasTkAgg(fig, master=preview_frame)
     canvas.draw()
     canvas.get_tk_widget().pack()
 
-
-def koniec():
+def close_app():
     root.quit()
 
-
-def pokaz_kursor(osi, df):
-    kursor = mplcursors.cursor(osi, hover=True)
-
-    @kursor.connect("add")
+def add_cursor(scatter, df, label_col='Hero'):
+    """adds tooltips when hovering over plot points"""
+    cursor = mplcursors.cursor(scatter, hover=True)
+    @cursor.connect("add")
     def on_add(sel):
         index = sel.index
-        sel.annotation.set_text(df.iloc[index]['Hero'])
+        sel.annotation.set_text(df.iloc[index][label_col])
 
+# --- Analyses ---
 
-def klastry(df):
-    potrzebne = ['Obj kills', 'OV s']
-    if all(col in df.columns for col in potrzebne):
-        wybrane = df[potrzebne]
-        standaryzuj = StandardScaler()
-        ustandaryzowane = standaryzuj.fit_transform(wybrane)
-        kmeans = KMeans(n_clusters=3, random_state=42)
-        df['Group'] = kmeans.fit_predict(ustandaryzowane)
+def cluster_analysis():
+    """cluster analysis based on eliminations and objective time"""
+    df = load_file()
+    if df is None:
+        return
+    required_cols = ['Obj kills', 'OV s']
+    if not all(col in df.columns for col in required_cols):
+        messagebox.showwarning("Missing data", "Required columns are missing in the file.")
+        return
 
-        ety0.config(
-            text="This figure focuses on data related to objective time per character. It uses KMeans algorithm to "
-                 "cut existing data into 3 clusters based on similair relation between kills on objective to time "
-                 "spent on objective per character. ")
-        ety1.config(text="Clusters mostly overlap with heroes roles.")
-        ety2.config(text="Please hover points to see heroes' names.")
-        ety3.config(text="")
+    X = df[required_cols]
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    df['Cluster'] = kmeans.fit_predict(X_scaled)
 
-        df['Color'] = df['Group'].astype('int')
-        df['Group'] = df['Group'].astype('object')
-        df.loc[df['Group'] == 0, 'Group'] = 'Support (low Elims)'
-        df.loc[df['Group'] == 1, 'Group'] = 'Tank'
-        df.loc[df['Group'] == 2, 'Group'] = 'DPS (high Elims)'
+    # assign cluster names
+    cluster_names = {0: 'Support (low Elims)', 1: 'Tank', 2: 'DPS (high Elims)'}
+    df['Group'] = df['Cluster'].map(cluster_names)
+    df['Color'] = df['Cluster']
 
-        kolory = {'Support (low Elims)': 0, 'Tank': 1, 'DPS (high Elims)': 2}
-        df['Color'] = df['Group'].map(kolory)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    scatter = ax.scatter(df['Obj kills'], df['OV s'], c=df['Color'], cmap='viridis', s=100)
+    ax.set_title('Elims on objective vs. overall objective time [s]')
+    ax.set_xlabel('Eliminations')
+    ax.set_ylabel('Time [s]')
+    handles = [plt.Line2D([0], [0], marker='o', color='w',
+                          markerfacecolor=scatter.cmap(scatter.norm(i)), markersize=10)
+               for i in range(3)]
+    ax.legend(handles, cluster_names.values(), title='Groups (Clusters)')
+    add_cursor(scatter, df)
+    set_info(
+        "The chart shows the division of characters into 3 clusters based on eliminations on objective and objective time.",
+        "Clusters mostly overlap with hero roles.",
+        "Hover over a point to see the hero's name.",
+        ""
+    )
+    show_plot(fig)
 
-        wykres = plt.figure(figsize=(10, 6))
-        osi = plt.scatter(df['Obj kills'], df['OV s'], c=df['Color'], cmap='viridis', s=100)
-        plt.title('Elims on objective vs. overall objective time [s]')
-        plt.xlabel('Eliminations')
-        plt.ylabel('Time [s]')
-        plt.legend(handles=[
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=osi.cmap(osi.norm(i)), markersize=10)
-            for i in range(3)],
-            labels=kolory.keys(), title='Groups (Clusters)')
-        pokaz_kursor(osi, df)
-        pokaz(wykres)
+def support_efficiency():
+    """analysis of support efficiency (KDAH vs win rate)"""
+    df = load_file()
+    if df is None:
+        return
+    if not all(col in df.columns for col in ['Role', 'KDA', 'H', 'Win rate', 'Hero']):
+        messagebox.showwarning("Missing data", "Required columns are missing in the file.")
+        return
 
-    else:
-        print("Brak wymaganych kolumn w danych.")
-
-
-def wybitnosc_supportow(df):
     df['KDAH'] = 0.0
     df.loc[df['Role'] == 'Support', 'KDAH'] = (df['KDA'] * df['H'] / 1000).astype(float)
     df_support = df[df['Role'] == 'Support']
 
-    wykres, ax = plt.subplots(figsize=(10, 6))
-    sc = ax.scatter(df_support['Win rate'], df_support['KDAH'], s=100, c='blue')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    scatter = ax.scatter(df_support['Win rate'], df_support['KDAH'], s=100, c='blue')
     sns.regplot(x='Win rate', y='KDAH', data=df_support, scatter_kws={'s': 100, 'color': 'blue'},
                 line_kws={'color': 'red'}, ax=ax)
     ax.set_title('KDAH vs. Win rate')
     ax.set_xlabel('Win rate [%]')
     ax.set_ylabel('KDAH/1000')
+    add_cursor(scatter, df_support)
+    set_info(
+        "KDAH is a new parameter combining KDA and healing. The chart shows the relationship between efficiency and win rate for support characters.",
+        "Hover over a point to see the hero's name.",
+        "",
+        ""
+    )
+    show_plot(fig)
 
-    ety0.config(text="KDAH is a new parameter combining KDA and H (healing). The figure shows efficiency correlated "
-                     "with win rate for the characters with healing abilities. ")
-    ety1.config(text="Please hover points to see heroes' names.")
-    ety2.config(text="")
-    ety3.config(text="")
+def fes_vs_efficiency():
+    """analysis of FES in relation to efficiency"""
+    df = load_file()
+    if df is None:
+        return
+    required_cols = ['Elims', 'Solo kills', 'Final blows', 'Dmg', 'H', 'Hero']
+    if not all(col in df.columns for col in required_cols):
+        messagebox.showwarning("Missing data", "Required columns are missing in the file.")
+        return
 
-    kursor = mplcursors.cursor(sc, hover=True)
-
-    @kursor.connect("add")
-    def on_add(sel):
-        x_hover = sel.target[0]
-        y_hover = sel.target[1]
-
-        distances = np.sqrt((df_support['Win rate'] - x_hover) ** 2 + (df_support['KDAH'] - y_hover) ** 2)
-        closest_index = distances.idxmin()
-        hero_name = df_support.loc[closest_index, 'Hero']
-        sel.annotation.set_text(hero_name)
-
-    pokaz(wykres)
-
-
-def fes_win(df):
     df['FES'] = df['Elims'] / (df['Solo kills'] + df['Final blows'])
-    df['Eff'] = ((df['Dmg'] / df['Elims']) + (df['H'] / 1000))/100
+    df['Eff'] = ((df['Dmg'] / df['Elims']) + (df['H'] / 1000)) / 100
 
-    liczba_przedzialow = 3
-    przedzialy = np.linspace(df['Eff'].min(), df['Eff'].max(), liczba_przedzialow + 1)
+    bins = np.linspace(df['Eff'].min(), df['Eff'].max(), 4)
+    labels = ['Low Efficiency', 'Medium Efficiency', 'High Efficiency']
+    df['Group'] = pd.cut(df['Eff'], bins=bins, labels=labels)
 
-    df['Group'] = pd.cut(df['Eff'], bins=przedzialy,
-                         labels=['Low Efficiency', 'Medium Efficiency', 'High Efficiency'])
-    wykres = plt.figure(figsize=(10, 6))
-    sns.boxplot(x='Group', y='FES', data=df)
-
-    plt.title('FES vs efficiency group')
-    plt.xlabel('Group')
-    plt.ylabel('FES')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.boxplot(x='Group', y='FES', data=df, ax=ax)
+    ax.set_title('FES vs efficiency group')
+    ax.set_xlabel('Group')
+    ax.set_ylabel('FES')
 
     grouped_heroes = df.groupby('Group', observed=False)['Hero'].apply(lambda x: ', '.join(x)).reset_index()
-    grouped_heroes['Label'] = grouped_heroes.apply(lambda row: f"{row['Group']}: {row['Hero']}", axis=1)
+    info = [f"{row['Group']}: {row['Hero']}" for _, row in grouped_heroes.iterrows()]
+    set_info(
+        "FES is the ratio of eliminations to the sum of solo kills and final blows, shown in relation to efficiency.",
+        info[0] if len(info) > 0 else "",
+        info[1] if len(info) > 1 else "",
+        info[2] if len(info) > 2 else ""
+    )
+    show_plot(fig)
 
-    ety0.config(text="FES is Elims divided by Solo kills + Final blows. It is shown in relation to the efficiency as "
-                     "of kill per DMG dealt.")
-    ety1.config(text=grouped_heroes['Label'].values[0])
-    ety2.config(text=grouped_heroes['Label'].values[1])
-    ety3.config(text=grouped_heroes['Label'].values[2])
+def set_info(line1, line2, line3, line4):
+    """sets the text in the information fields"""
+    info0.config(text=line1)
+    info1.config(text=line2)
+    info2.config(text=line3)
+    info3.config(text=line4)
 
-    pokaz(wykres)
-
+# --- gui ---
 
 root = tk.Tk()
-root.title("analiza, janik p.")
+root.title("Game Data Analysis")
 
-etykieta_label = tk.Label(root, text="File name: ")
-etykieta_label.grid(row=0, column=0, padx=10, pady=0, sticky="w")
-pole = tk.Entry(root)
-pole.insert(0, "dane.txt")
-pole.grid(row=1, column=0, padx=10, pady=0, sticky="w")
+# file loading
+tk.Label(root, text="File name:").grid(row=0, column=0, padx=10, pady=0, sticky="w")
+file_entry = tk.Entry(root)
+file_entry.insert(0, "data.txt")
+file_entry.grid(row=1, column=0, padx=10, pady=0, sticky="w")
 
-an1_przycisk = tk.Button(root, text="Objective", command=lambda: klastry(wczytaj_plik()))
-an1_przycisk.grid(row=4, column=0, padx=10, pady=10, sticky="w")
+# analysis buttons
+tk.Button(root, text="Objective Clusters", command=cluster_analysis).grid(row=4, column=0, padx=10, pady=10, sticky="w")
+tk.Button(root, text="Support Efficiency", command=support_efficiency).grid(row=5, column=0, padx=10, pady=10, sticky="w")
+tk.Button(root, text="FES vs Efficiency", command=fes_vs_efficiency).grid(row=6, column=0, padx=10, pady=10, sticky="w")
+tk.Button(root, text="Close", command=close_app).grid(row=13, column=0, padx=10, pady=10, sticky="w")
 
-an2_przycisk = tk.Button(root, text="KDAH x wins", command=lambda: wybitnosc_supportow(wczytaj_plik()))
-an2_przycisk.grid(row=5, column=0, padx=10, pady=10, sticky="w")
+# plot preview
+preview_frame = tk.Frame(root, width=1140, height=600)
+preview_frame.grid(row=0, column=1, rowspan=14, padx=10, pady=10)
+preview_frame.grid_propagate(False)
 
-an3_przycisk = tk.Button(root, text="FES x wins", command=lambda: fes_win(wczytaj_plik()))
-an3_przycisk.grid(row=6, column=0, padx=10, pady=10, sticky="w")
-
-zamknij_przycisk = tk.Button(root, text="Close window", command=koniec)
-zamknij_przycisk.grid(row=13, column=0, padx=10, pady=10, sticky="w")
-
-podglad = tk.Frame(root, width=1140, height=600)
-podglad.grid(row=0, column=1, rowspan=14, padx=10, pady=10)
-podglad.grid_propagate(False)
-
-ety0 = tk.Label(root, wraplength=260, justify="left", text=" ")
-ety0.grid(row=9, column=0, padx=10, pady=0, sticky="w")
-ety1 = tk.Label(root, wraplength=260, justify="left", text=" ")
-ety1.grid(row=10, column=0, padx=10, pady=0, sticky="w")
-ety2 = tk.Label(root, wraplength=260, justify="left", text=" ")
-ety2.grid(row=11, column=0, padx=10, pady=0, sticky="w")
-ety3 = tk.Label(root, wraplength=260, justify="left", text=" ")
-ety3.grid(row=12, column=0, padx=10, pady=0, sticky="w")
+# information fields positions
+info0 = tk.Label(root, wraplength=260, justify="left", text=" ")
+info0.grid(row=9, column=0, padx=10, pady=0, sticky="w")
+info1 = tk.Label(root, wraplength=260, justify="left", text=" ")
+info1.grid(row=10, column=0, padx=10, pady=0, sticky="w")
+info2 = tk.Label(root, wraplength=260, justify="left", text=" ")
+info2.grid(row=11, column=0, padx=10, pady=0, sticky="w")
+info3 = tk.Label(root, wraplength=260, justify="left", text=" ")
+info3.grid(row=12, column=0, padx=10, pady=0, sticky="w")
 
 root.mainloop()
