@@ -1,4 +1,4 @@
-*# Overwatch Data Analytics Desktop App
+# Overwatch Data Analytics Desktop App
 ## Project Description
 
 This project is an **interactive desktop application** in Python for analyzing hero statistics from the game Overwatch. It leverages libraries such as Pandas, Matplotlib, and Scikit-learn for data processing, visualization, and statistical analysis.
