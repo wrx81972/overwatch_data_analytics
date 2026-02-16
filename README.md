@@ -3,6 +3,9 @@
 
 This project is an **interactive desktop application** in Python for analyzing hero statistics from the game Overwatch. It leverages libraries such as Pandas, Matplotlib, and Scikit-learn for data processing, visualization, and statistical analysis.
 
+![Objective Cluster](img/data_analytics1.png)
+Image 1. *Objective Cluster*
+
 **Requirements**
 
 Application requires following packages:
